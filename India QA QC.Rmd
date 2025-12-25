@@ -1,0 +1,555 @@
+---
+title: "India QA/QC"
+author: "Ankit Anand"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+## R Markdown
+
+These library will use to import and sort our data:
+
+```{r, echo = FALSE,message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(dplyr)
+library(readxl)
+library(janitor)
+library(data.validator)
+library(stringr)
+library(validate)
+library(plyr)
+library(RCurl)
+library(knitr)
+library(tibble)
+library(data.table)
+library(RCurl)
+```
+
+With use of above library we will do QA/QC of our dataset -\> we will
+put our database into "data" variable:
+
+```{r,echo=FALSE,message=FALSE, warning=FALSE}
+#Import data set(s)
+getwd()
+data <-read_excel("TERM 2024.xlsx", sheet = "TERM 2024 datsheet") 
+
+```
+
+We will first remove spaces, then these commands will give gist of our
+whole data: will tell how many coloumns we whave, and what type of
+variables it contains:
+
+```{r}
+#Clean column names: remove spaces with _, and makes all lowercase
+data <- data %>% clean_names() #replaces spaces in column names with underscores and makes all lowercase
+
+#this will give a brief view of data
+table(str(data)) 
+summary(data)
+
+selected_columns <- data[, c('country','id', 'content_type', 'profile_name', 'social_platform', 'marketing_tactic', 'message_framing')]
+
+# Apply the table function to each selected column to get frequency counts
+frequency_counts <- lapply(selected_columns, function(x) {
+  freq_table <- as.data.frame(table(x))
+  total_row <- data.frame(x = "Total", Freq = sum(freq_table$Freq))
+  freq_table <- rbind(freq_table, total_row)
+  return(freq_table)
+})
+
+# To print the frequency counts with the total row for the selected columns
+print(frequency_counts)
+
+# Extract structure information
+str_info <- capture.output(str(data))
+
+# Create a summary table
+summary_table <- data.frame(
+  Variable = names(data),
+  DataType = sapply(data, function(x) paste(class(x), collapse = ", ")),
+  VariableType = sapply(data, typeof),
+  Frequency = sapply(data, function(x) length(unique(x)))
+)
+
+summary_table
+```
+
+we will go coloumn-by-coloumn, first change the colounm names, that are
+different from our codebook \*Remember keep on updating the codebook:
+
+```{r}
+# 00 Checking null value
+# Calculate the number of NA values in each column
+na_counts <- sapply(data, function(x) sum(is.na(x)))
+
+# To print the counts of NA values for each column
+print(na_counts)
+
+# Filter columns that have NA values
+columns_with_na <- na_counts[na_counts > 0]
+
+# To print the columns with NA values and their counts
+print(columns_with_na)
+```
+
+```{r, echo = TRUE}
+# A) Checking Coloumn Names
+
+#create list of correct column names from codebook
+codebook_col_names <- c("country"	,"ID",	"date",	"content_type",	"social_platform",	"platform_other",	"profile_name",	"account_other",	"username",	"username_other",	"caption_title",	"english_caption",	"url",	"state",	"likes",	"comments",	"shares",	"engagement",	"type_tobacco",	"product_type",	"account_type",	"Third_party_check",	"company",	"company_other",	"company_origin",	"product_brand",	"product_other",	"retailer_name",	"retailer_other",	"account_description",	"account_other",	"marketing_tactic",	"message_framing",	"media_type", "media_url")
+#keep editing this codebook
+
+#This represent the different name sets:
+setdiff(names(data), codebook_col_names)
+```
+
+If we see different names, then we will use setnames, to chnage coloumn
+name: setnames syntax work as follows: setnames("database name","name as
+per codebook ", "name misspelt in database")
+
+```{r}
+#changing the name of coloumn as per database:
+setnames(data,"ID", "id")
+
+```
+
+Or if we want to remove an extra coloumn: just write the coloumn names
+you get from the above output and put in -c("coloumn1","column 2","xyz")
+
+```{r}
+data<- data[,!names(data) %in% c("account_other...8","account_other...30", "image_file","...36", "...37","...38","...39","...40","...41", "...42","...43","...44","...45","...46","...47","...48","...49","...50")]
+unique(names(data))
+```
+
+Now we will set date in a certain format, and this will also gives total
+number if record we have at the end
+
+```{r, echo = TRUE, results = 'hide', message=FALSE,warning=FALSE}
+#C) Setting DATE in certain format:
+
+data$date <- format(data$date, "%Y-%m-%d")
+nrow(data)
+```
+
+In this we will change the platform as per our codebook: first, it will
+show whta type of social platform we have;
+
+```{r, echo = TRUE, results = 'hide', message=FALSE,warning=FALSE}
+#D) CONTENT TYPE:
+
+codebook_platform<-c("Social Media",  "News", "Facebook Post","Instagram Post","Tweet","Online Article","Youtube")
+
+
+#This table will show you variable count before changes:
+aggregate(data$content_type, by = list(data$content_type), FUN = length)
+```
+
+then this will represent what platform names we have to change;
+
+```{r, echo = TRUE, results = 'hide', message=FALSE,warning=FALSE}
+#Will represnt which coloumn we have to change
+setdiff(data$content_type,codebook_platform)
+```
+
+then here we will change platform names, using gsub() here: gsub() code
+syntax as: gsub("name that is different from codebook", "replacement of
+that name ", "dataset name)
+
+```{r, echo = TRUE, results = 'hide', message=FALSE,warning=FALSE}
+
+#in this we will change code manually again:
+data$content_type <- gsub("Social Media", "Social media", data$content_type)
+
+#The final output table:
+aggregate(data$content_type, by = list(data$content_type), FUN = length)
+```
+
+Similarly we will do for the profile name; first this will show how many
+uniques profile we have:
+
+```{r, message=TRUE}
+#E) PROFILE NAME:
+
+#This table will show you variable count before changes:
+aggregate(data$profile_name, by = list(data$profile_name), FUN = length)
+
+#This is our codebook name, keep on altering this:"
+codebook_profilename<-c( "Miraj Cinemas","Miraj Foods","Miraj Miracle"  , "Miraj Multicolour",  "Pass Pass" ,  "A B Bidi Company" ,  "Miraj Group"  ,"Kamla Pasand",  "Pan Bahar", "Pan Parag" ,  "Moms Magic" , "Sunfeast Moms Magic" ,  "Cigar Conexion"  , "Rajnigandha Silver Pearls" ,
+"Aashirvaad"  ,            "Birthright" ,                      
+"Mangaldeep"             ,           "Sunfeast Yippee" ,                 
+"Chingles"          ,                "B Natural Fruit Beverages" ,       
+"Candyman Fantastik" ,               "Paperkraft"     ,                  
+"Sunfeast Dark Fantasy"   ,          "Miraj Pipes Fittings Pvt Ltd", 
+"Cigarsindiain"  ,"Aashirvaad Svasti Ghee"   ,         "Nimwash Vegetable Fruit Wash" ,  
+"DB Siggnature Silver Elaichi"   ,   "Farmlite",                         
+"Nimyle"  ,                          "Sunfeast YiPPee"  ,         "Fabelle Exquisite Chocolates"  , "Sunfeast Milkshake"  ,              "Kitchens of India Indian Region",                 "Vivel",                            
+"Latestly"                ,          "Charmis"   ,                       
+"Fiama"  ,  "Engage"                    ,        "Natures Miracle" ,               
+"The Vape Store Delhi"  ,          "vape_wholesaler _ india"  ,          
+"Natures Miracle LLP",              "Engage Deo" ,                      
+"HOURS DELIVERY"  ,               "Classmate"    ,                
+"Masud Beedi" ,                   "Bharat Tobacco Trading Company" ,  
+"economictimes"            ,         "SmokehouseIndia"  ,                
+"Bingo"                        ,    "Catch Foods" ,                     
+"Fiama India Itc"   ,               "Master Chef" ,                 
+"Mirajcinemas"            ,          "Vape_wholesaler_india" ,           
+"Chinglesgums",         "Savlon India"  ,                   
+"Sdarkfantasy"        ,              "Sunbean Coffee" ,                  
+"Mirajmulticolour" ,"Dinesh Bidi",       "Rajnigandha" ,                     
+"The Vape Store delhi",            "Mursidabad Biri Works" ,           
+"Nimyle Official" ,                  "Sfmomsmagic" ,                     
+"PATEL BIDI" ,                    "rajnigandhasilverpearls"          ,
+"Business Standard"      ,           "Financial Express"         ,       
+"The Financial Express"  ,  "Sunfeast", "Mint" , "Mursidabad BIRI WORKS",            
+"vape india smoke" ,                 "Sona filter biri works" ,          
+"Dada bidi"  ,                       "Catch foods" ,                  
+"Sunfeast Farmlite" ,                "Goa Pan Masala",                   
+"PanParag"    , "Sunfeast Yippee" ,      "Pass Pass Fun Mouth Freshner" ,     "MIRAJ GROUP",                      
+"Association of Vapers India",       "Durga Beedi",                      
+"Theweeklive"     ,                  "The Hindu Business Line",          
+"Indianewstoday"                ,   "Indiasnews" ,                      
+"The Hindu" ,                        "Kitchens Of India Indian Region",
+"Db Siggnature Silver Elaichi",      "Loksatta",                         
+"Indiatimes"             ,           "Cnnnews" ,                       
+"Bestmediainfo"      ,               "Sunfeast Biscuits",                
+"Feedburner"  ,                      "Scroll" ,             "Fpjindia"           ,               "Afaqs","The Sentinel"   ,    "CigarsIndia" ,                   "sunfeastwonderzmilk"       ,        "DAVIDOFF CIGARS INDIA" ,           
+"Master Bidi"     ,                  "Bingo"  ,  "Tobacco Scented India"    ,         "dineshbidi"         ,   "SUN Beedi"   ,                     
+"KitchensofIndia"     ,              "ranakhanbeedi"        ,       "S k bidi company"   ,               "ITC Hub n Scope"            , "Tugboat Vape India" ,         "Vape Shop",    "Smokehouseindia"     ,              "Vape Bar India",                   
+"indian_vape_shop" ,                 "VAPE  INDIA  MART"  ,              
+"vape_mission_india"      ,          "geekbar india",                    
+"The Vape Store" ,                   "Nimwash" ,                         
+"vape_wholesale_ india"  ,            "Vape india Smoke",                 
+"Yuoto India"            ,           "ukvaporwaves_india",               
+"bloombergquint"     ,               "hotelierindia",                    
+"cnbctv"                  ,        "thecsrjournal"   ,                 
+"indiainfoline"            ,         "theprint"        ,                 
+"smetimes"                ,          "mathrubhumi"   ,                   
+"ndtv"               ,               "tdpelmedia"       ,                
+"indiatvnews"        ,               "utsa"        ,                     
+"mashable"             ,             "bollywoodlife",                    
+"financialexpress" ,                 "indiacsr"   ,            "bestmediainfo"  ,                  
+"indiantelevision"        ,          "exchangemedia",                   
+"adgully"           ,                "indiantelvision"   ,               
+"businesstoday"     ,                "livemintcon" ,                    
+"boldsky"    ,                       "kamla Pasand" ,                    
+"mangaldeep"  ,"Sunfeast Marie Light"        
+)
+```
+
+After that, this will show different names from the codebook:
+
+```{r, message=TRUE}
+#Will represnt which coloumn we have to change
+setdiff(data$profile_name,codebook_profilename)
+```
+
+Then again we will use gsub, as per above format that i alrady
+mentioned:
+
+```{r, echo = TRUE, results = 'hide', message=FALSE,warning=FALSE}
+
+#in this we will change code manually again:
+data$profile_name <- gsub("Itc Classmate", "classmate", data$profile_name)
+data$profile_name <- gsub("Bnaturaljuices", "B Natural Fruit Beverages", data$profile_name)
+data$profile_name <- gsub("A.b. Bidi Company", "A B Bidi Company", data$profile_name)
+
+data$profile_name <- gsub("Fabelle" , "Fabelle Exquisite Chocolates", data$profile_name)
+data$profile_name <- gsub("Aashirvaad Svasti Ghee Ghee" , "Aashirvaad Svasti Ghee", data$profile_name)
+data$profile_name <- gsub("Afaqs!" , "afaqs", data$profile_name)
+#The final output table:
+aggregate(data$profile_name, by = list(data$profile_name), FUN = length)
+
+```
+
+For username, this only represent different type of usernames we have
+
+```{r}
+#F) USERNAME:
+
+#This table will show you variable count before changes:
+unique(data$username)
+
+```
+
+this will change our all caption in only character type:
+
+```{r}
+#G) ENG_Caption: just read it as character:
+
+data$english_caption-> as.character(data$english_caption)
+```
+
+this will take our url coloumn and form new column named "URL_Check"
+that will retrin "true" or "false", if link working or not
+
+```{r}
+#H) URL check enter a coloumn next to it to add coloumn:
+#this will form a new coloumn to check the URL:
+data$URL_Check=url.exists(data$url)
+
+```
+
+```{r}
+#I)STATE: will check how many states we have and change the name if we find any desperancies
+unique(data$state)
+#this will tell how many na values we have
+print(sum(is.na(data$state))) 
+  
+# get the NA index positions 
+print(which(is.na(data$state))) 
+
+```
+
+Case I) if we want to change certain name of states: then again we will
+use gsub()
+
+```{r}
+data$state <- gsub("Odissa", "Odihsa", data$state)
+
+```
+
+case II) this will show different states we have also we remove na from
+the coloumns usning na.omit() command:
+
+```{r}
+  aggregate(data$state, by = list(data$state), FUN = length)
+na.omit(data$state)
+```
+
+```{r}
+#K) TYPE TOBACCO:
+#This table will show you variable count before changes:
+aggregate(data$type_tobacco, by = list(data$type_tobacco), FUN = length)
+
+#This is our codebook name, keep on altering this:
+
+codebook_tobacco<- c("Cigarettes",	"Kretek or clove cigarettes","Bidi","Cigars","Smokeless tobacco","E-cigarettes","Heated tobacco products","Nicotine products","Non-tobacco product","Store promotion")
+```
+
+```{r, message=TRUE}
+#Will represnt which coloumn we have to change
+setdiff(data$type_tobacco,codebook_tobacco)
+```
+
+```{r, echo = TRUE, results = 'hide', message=FALSE,warning=FALSE}
+
+#in this we will change code manually again:
+data$type_tobacco <- gsub("Electronic cigarettes", "E-cigarettes", data$type_tobacco)
+
+#The final output table:
+aggregate(data$type_tobacco, by = list(data$type_tobacco), FUN = length)
+
+```
+
+```{r}
+#L)Product Type:
+
+unique(data$product_type)
+#This table will show you variable count before changes:
+aggregate(data$product_type, by = list(data$product_type), FUN = length)
+
+#This is our codebook name, keep on altering this:
+
+codebook_tobacco<- c("Non-Tobacco Marketing" ,"Tobacco Marketing" )
+```
+
+```{r, message=TRUE}
+#Will represnt which coloumn we have to change
+setdiff(data$product_type,codebook_tobacco)
+```
+
+```{r, echo = TRUE, results = 'hide', message=FALSE,warning=FALSE}
+
+#in this we will change code manually again:
+data$product_type <- gsub("Tobacco marketing", "Tobacco Marketing", data$product_type)
+
+#The final output table:
+aggregate(data$product_type, by = list(data$product_type), FUN = length)
+
+```
+
+```{r}
+#M) Account_TYpe:
+
+#This table will show you variable count before changes:
+aggregate(data$account_type, by = list(data$account_type), FUN = length)
+
+#This is our codebook name, keep on altering this:
+
+codebook_accnt<- c("Smoking tobacco company","Smokeless tobacco company","	E-cigarette company","Smoking tobacco product brand","Smoking tobacco product brand","E-cigarette product brand","Nicotine product brand","Nicotine products","Non-tobacco product brand","Third-party retailer","Brand-affiliated community group","Front group","News","Heated tobacco product")
+```
+
+```{r, message=TRUE}
+#Will represnt which coloumn we have to change
+setdiff(data$account_type,codebook_accnt)
+```
+
+```{r, echo = TRUE, results = 'hide', message=FALSE,warning=FALSE}
+
+#in this we will change code manually again:
+data$account_type <- gsub(" ", " ", data$account_type)
+
+#The final output table:
+aggregate(data$account_type, by = list(data$account_type), FUN = length)
+
+```
+
+---------------------------------------------------------------------------------------------------This
+is under process, will do this later I have to cretae a codebook for the
+comapnies we are tracking so far
+
+```{r}
+#N) Company:
+#This table will show you variable count before changes:
+aggregate(data$company, by = list(data$company), FUN = length)
+
+#This is our codebook name, keep on altering this:
+
+codebook_company-> c("")
+```
+
+```{r, message=TRUE}
+#Will represnt which coloumn we have to change
+setdiff(data$account_type,codebook_company)
+```
+
+```{r, echo = TRUE, results = 'hide', message=FALSE,warning=FALSE}
+
+#in this we will change code manually again:
+data$company <- gsub(" ", " ", data$company)
+
+#The final output table:
+aggregate(data$company, by = list(data$company), FUN = length)
+
+```
+
+```{r}
+# Company Origin; ALL CHWCK ITS INDIA OR NOT
+is_valid_country <- function(country) {
+  allowed_countries <- c("India")
+  return(country %in% allowed_countries)
+}
+
+```
+
+```{r}
+#UNDER_CONSTRUCTION
+#Product Brand: this will also be in under construction:
+
+#o) Company other: this will alose be in under construction:
+
+```
+
+------------------------------------------------------------------------
+
+now we will sort account descriptions also, as per the above processes:
+
+```{r}
+#account description: 
+#This table will show you variable count before changes:
+unique(data$account_description)
+aggregate(data$account_description, by = list(data$account_description), FUN = length)
+
+#This is our codebook name, keep on altering this:
+
+codebook_acc_description-> c("Smoking tobacco company","Smokeless tobacco company","	E-cigarette company","Smoking tobacco product brand","Smoking tobacco product brand","E-cigarette product brand","Nicotine product brand","Nicotine products","Non-tobacco product brand","Third-party retailer","Brand-affiliated community group","Front group","News","Heated tobacco product")
+```
+
+```{r, message=TRUE}
+#Will represnt which coloumn we have to change
+setdiff(data$account_description,codebook_acc_description)
+```
+
+```{r, echo = TRUE, results = 'hide', message=FALSE,warning=FALSE}
+
+#in this we will change code manually again:
+data$account_description <- gsub("YouTube", "Youtube", data$account_description)
+
+#The final output table:
+aggregate(data$account_description, by = list(data$account_description), FUN = length)
+
+```
+
+```{r}
+#Marketing Tactic:
+#this will show different types of tactics we have 
+aggregate(data$marketing_tactic, by = list(data$marketing_tactic), FUN = length)
+
+marketing_tactic_cat <- c("Corporate Social Responsibility", "Direct Marketing", "Events, Promotions and Sponsorships", "Surrogate Advertising")
+  
+```
+
+```{r, message=TRUE}
+#Will represnt which coloumn we have to change
+setdiff(data$marketing_tactic,marketing_tactic_cat)
+```
+
+will represnt tactics we have to chnage
+
+```{r, echo = TRUE, results = 'hide', message=FALSE,warning=FALSE}
+
+#in this we will change code manually again:
+data$marketing_tactic <- gsub(" ", "  ", data$marketing_tactic)
+
+#The final output table:
+aggregate(data$marketing_tactic, by = list(data$marketing_tactic), FUN = length)
+
+```
+
+```{r}
+#message framing:
+#this willl show different types of framings:
+aggregate(data$marketing_tactic, by = list(data$marketing_tactic), FUN = length)
+
+```
+
+will represnt tactics we have to chnage
+
+```{r, message=TRUE}
+unique(data$message_framing)
+#this is our codebook:
+mssg_framing <- c("Secular community celebrations", "Informational","Product features",               "Glamorization" ,"Environment eco-awareness" ,"Religious event or imagery","Personal care and wellness" ,"Entertainment","Social welfare","Health claims","Product Features")
+
+#Will represnt which coloumn we have to change
+setdiff(data$marketing_tactic,mssg_framing)
+```
+
+```{r, echo = TRUE, results = 'hide', message=FALSE,warning=FALSE}
+
+#in this we will change code manually again:
+data$message_framing <- gsub(" ", "  ", data$message_framing)
+
+#The final output table:
+aggregate(data$message_framing, by = list(data$message_framing), FUN = length)
+
+```
+
+In this we will check three numeric column all together to remove any na
+value, so that we dont get any absurd result, but by using below command
+we will remove all na values in our data frame:
+
+```{r}
+#J) Likes/Comment/Share/Engagement:
+sum(data$shares,na.rm=TRUE)+sum(data$comments,na.rm = TRUE)+sum(data$likes,na.rm = TRUE)+sum(data$engagement,na.rm = TRUE)
+
+data <- data[complete.cases(data),]
+
+```
+
+we also chaeck for duplicate data at last:
+
+```{r}
+#This will look for duplicate dataset, for all coloumns
+get_dupes(data) #search for duplicates using all columns
+#get_dupes(dataset, media_name, headline, platform, url) #search for duplicates using specific columns
+```
+
+Now all data is sorted, we will import
+
+```{r}
+write.csv(data, file = "india_clean.csv")
+getwd()
+```
